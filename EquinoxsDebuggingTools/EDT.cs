@@ -86,6 +86,7 @@ namespace EquinoxsDebuggingTools
             if (sSinceLastPacedLog < delaySeconds) return;
 
             WriteToLog(modName, category, message, callingFunction);
+            sSinceLastPacedLog = 0;
         }
 
         /// <summary>

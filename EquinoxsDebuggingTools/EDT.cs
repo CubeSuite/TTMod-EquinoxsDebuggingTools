@@ -1,11 +1,13 @@
 ﻿using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
+using FluffyUnderware.DevTools.Extensions;
 using HarmonyLib;
 using RewiredConsts;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using static RootMotion.FinalIK.InteractionObject;
@@ -17,7 +19,7 @@ namespace EquinoxsDebuggingTools
     {
         private const string MyGUID = "com.equinox.EquinoxsDebuggingTools";
         private const string PluginName = "EquinoxsDebuggingTools";
-        private const string VersionString = "1.0.0";
+        private const string VersionString = "2.0.0";
 
         private static readonly Harmony Harmony = new Harmony(MyGUID);
         internal static ManualLogSource log = new ManualLogSource(PluginName);
@@ -37,10 +39,13 @@ namespace EquinoxsDebuggingTools
 
         private void Awake() {
             instance = this;
+            Logger.LogInfo($"Config has {Config.Count} entries");
             foreach(KeyValuePair<ConfigDefinition,ConfigEntryBase> entry in Config) {
+                Logger.LogInfo("Checking entry");
                 if(entry.Value is ConfigEntry<bool> boolEntry) {
                     string key = entry.Key.Section.Replace("Mods.", "");
                     shouldLogStatuses.Add(key, boolEntry);
+                    Logger.LogInfo($"Added entry: {key}, {boolEntry.Value}");
                 }
             }
 
@@ -69,7 +74,7 @@ namespace EquinoxsDebuggingTools
             string callingFunction = GetCallingFunction();
 
             if (!ShouldLogMessage(modName, category)) return;
-            WriteToLog(modName, category, message, callingFunction);
+            WriteToLog(category, message, callingFunction);
         }
 
         /// <summary>
@@ -85,7 +90,7 @@ namespace EquinoxsDebuggingTools
             if (!ShouldLogMessage(modName, category)) return;
             if (sSinceLastPacedLog < delaySeconds) return;
 
-            WriteToLog(modName, category, message, callingFunction);
+            WriteToLog(category, message, callingFunction);
             sSinceLastPacedLog = 0;
         }
 
@@ -141,7 +146,7 @@ namespace EquinoxsDebuggingTools
 
             log.LogInfo($"Debugging {objType.Name} '{name}':");
             foreach (FieldInfo field in fields) {
-                string value = field.GetValue(obj).ToString();
+                string value = field.GetValue(obj)?.ToString() ?? "null";
                 string type = basicTypeNames.ContainsKey(field.FieldType) ? basicTypeNames[field.FieldType] : field.FieldType.ToString();
 
                 if (type == "char") value = $"'{value}'";
@@ -161,7 +166,13 @@ namespace EquinoxsDebuggingTools
         private static bool ShouldLogMessage(string modName, string category) {
             string key = $"{modName}.{category}";
             if (!shouldLogStatuses.ContainsKey(key)) {
-                ConfigEntry<bool> newEntry = instance.Config.Bind<bool>($"Mods.{modName}", $"Debug {category}", developerMode.Value, new ConfigDescription($"Whether debug messages should be logged for {modName} - {category}"));
+                ConfigEntry<bool> newEntry = instance.Config.Bind(
+                    $"Mods.{modName}", 
+                    $"Debug {category}", 
+                    developerMode.Value, 
+                    new ConfigDescription($"Whether debug messages should be logged for {modName} - {category}")
+                );
+
                 shouldLogStatuses.Add(key, newEntry);
             }
 
@@ -169,8 +180,8 @@ namespace EquinoxsDebuggingTools
             return shouldLogStatuses[key].Value;
         }
 
-        private static void WriteToLog(string modName, string category, string message, string callingFunction) {
-            string fullMessage = $"[{modName}|{category}|{callingFunction}]: {message}";
+        private static void WriteToLog(string category, string message, string callingFunction) {
+            string fullMessage = $"[{category}|{callingFunction}]: {message}";
             log.LogInfo(fullMessage);
         }
 
@@ -188,6 +199,14 @@ namespace EquinoxsDebuggingTools
             Type declaringType = method.DeclaringType;
             Assembly assembly = declaringType.Assembly;
             return assembly.GetName().Name;
+        }
+
+        private string ProcessListOrArray(object input) {
+            if (input == null) return "null";
+
+            var array = (Array)input;
+            var values = array.Cast<object>().Select(x => x.ToString());
+            return string.Join(" ", values);
         }
     }
 }
